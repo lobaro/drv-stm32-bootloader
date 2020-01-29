@@ -11,7 +11,7 @@
 ringBuffer_typedef(volatile char, rxRingBuf_t);
 static rxRingBuf_t rxRingBuf;
 static rxRingBuf_t* pRxRingBuf = &rxRingBuf;
-static volatile char rxMem[2048];
+static volatile char rxMem[1280];
 static volatile uint32_t bytesInBuffer=0;
 
 void drv_stm32boot_Timeout_IRQ_cb(){
@@ -48,7 +48,7 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
     boot.hostInitDone = false;
 
     // init receive ringbuffer
-    drv_rbuf_init(pRxRingBuf, 512, volatile char, rxMem);
+    drv_rbuf_init(pRxRingBuf, STM32_BOOT_RINGBUF_SIZE, volatile char, rxMem);
     setBytesToReceive(1);
 
     Time_t timeNow = boot.api.GetTime();
@@ -58,7 +58,7 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
     while (!boot.isTimeout){
 
         // check for at least expected byte to be available for processing
-        if(bytesInBuffer < boot.expectedRxBytes){
+        if(!(bytesInBuffer >= boot.expectedRxBytes)){
             continue;
         }
 
@@ -88,6 +88,7 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
         if(boot.selectedCmd == CmdNone && boot.expectedRxBytes == 2) {
             if(checkXorCsum((char*)boot.mem_rx, boot.expectedRxBytes) == false){
                 Log("csum error while selecting next cmd\n");
+
                 setBytesToReceive(1 + STM32_BOOT_CSUM_SIZE);
                 continue;
             }
@@ -103,6 +104,7 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
         if(boot.selectedCmdDoWorkLoop() == true){ // command done, else command restarts receive if needed internally
             // setup receive logic for next command
             boot.selectedCmd = CmdNone;
+
             setBytesToReceive(1 + STM32_BOOT_CSUM_SIZE);
         }
 

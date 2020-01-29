@@ -27,7 +27,6 @@ void drv_stm32boot_onByteRxed_IRQ_cb(char c);
 void drv_stm32boot_Timeout_IRQ_cb();
 
 
-
 #ifdef __cplusplus
 }
 #endif

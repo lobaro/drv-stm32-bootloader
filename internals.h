@@ -32,8 +32,9 @@ static const uint8_t CmdWriteUnProtect   = 0x73;
 static const uint8_t CmdReadoutProtect   = 0x82;
 static const uint8_t CmdReadoutUnProtect = 0x92;
 
-#define STM32_BOOT_RX_MEM_SIZE 2048
-#define STM32_BOOT_TX_MEM_SIZE 2048
+#define STM32_BOOT_RX_MEM_SIZE 1280
+#define STM32_BOOT_TX_MEM_SIZE 1280
+#define STM32_BOOT_RINGBUF_SIZE 1280
 #define STM32_BOOT_CSUM_SIZE 1
 
 
