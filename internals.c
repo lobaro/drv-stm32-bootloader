@@ -3,8 +3,9 @@
 
 #include "stm32_bootloader.h"
 #include "internals.h"
-#include <github.com/lobaro/c-utils/logging.h>
+#include "module_logging.h"
 
+// inspiration https://github.com/Mirn/STM32Fx_AN3155_bootloader/blob/master/boot_stm32F100x/bootloader.c
 // state
 boot32_t boot;
 
@@ -51,22 +52,27 @@ static void send(char* pData, size_t size){
     return false;
 }
 
+// *****
+// GET ID
+// *****
 static bool GetId(){
     send_ACK(); // command ack
-#if configLOG_STM32_BOOTLOADER == 1
-    Log("WriteMem: Start\n");
-#endif
+    LOG("GetID: Start\n");
+
     boot.mem_tx[0] = 1;
-    boot.mem_tx[1] = 0x04; // PID Byte 0
-    boot.mem_tx[2] = 0x29;   // PID Byte 1 (our lora stm32 = 0x429)
+
+    boot.mem_tx[1] = (uint8_t) ((boot.chipID >> 8) & 0xff) ;   // PID Byte 0
+    boot.mem_tx[2] = (uint8_t) (boot.chipID & 0xff); // PID Byte 1 (our lora stm32 = 0x429)
     boot.mem_tx[3] = BYTE_ACK;
     send(boot.mem_tx, 4);
-#if configLOG_STM32_BOOTLOADER == 1
-    Log("WriteMem: End\n");
-#endif
+
+    LOG("GetID: End\n\n");
     return true; // signal processing done
  }
 
+// *****
+// WRITE
+// *****
  static bool WriteMem(){
   static uint32_t stage = 0;
   static uint32_t startAddress = 0;
@@ -74,9 +80,9 @@ static bool GetId(){
 
   if(stage==0){
       send_ACK(); // ack write memory command
-#if configLOG_STM32_BOOTLOADER == 1
-      Log("WriteMem: Start\n");
-#endif
+
+      LOG("WriteMem: Start\n");
+
       setBytesToReceive(4 + STM32_BOOT_CSUM_SIZE); // setup to receive memory write address
       bytesToWrite = 0;
       startAddress = 0;
@@ -87,13 +93,13 @@ static bool GetId(){
   // Receive the start address (4 bytes) & checksum
   if(stage==1){
       if(checkXorCsum((char*)boot.mem_rx, boot.expectedRxBytes)){
-          startAddress |= ((uint32_t)boot.mem_rx[0]) << 24;
-          startAddress |= ((uint32_t)boot.mem_rx[1]) << 16;
-          startAddress |= ((uint32_t)boot.mem_rx[2]) << 8;
+          startAddress |= ((uint32_t)boot.mem_rx[0]) << (uint32_t)24;
+          startAddress |= ((uint32_t)boot.mem_rx[1]) << (uint32_t)16;
+          startAddress |= ((uint32_t)boot.mem_rx[2]) << (uint32_t)8;
           startAddress |= ((uint32_t)boot.mem_rx[3]);
-#if configLOG_STM32_BOOTLOADER == 1
-          Log("WriteMem: start address = 0x%08x\n",startAddress);
-#endif
+
+          //LOG("WriteMem: start address = 0x%08x\n",startAddress);
+
           send_ACK(); // ack start address
           setBytesToReceive(1 ); // num of bytes to expect
           stage++;
@@ -106,9 +112,9 @@ static bool GetId(){
       bytesToWrite = boot.mem_rx[0];
       setBytesToReceive(bytesToWrite + 1 + STM32_BOOT_CSUM_SIZE ); // num of bytes to expect
       stage++;
-#if configLOG_STM32_BOOTLOADER == 1
-      Log("WriteMem: %d Bytes to be written\n",bytesToWrite+1);
-#endif
+
+      //LOG("WriteMem: %d Bytes to be written:\n",bytesToWrite+1);
+
       return false;
   }
 
@@ -121,30 +127,32 @@ static bool GetId(){
       if(checkXorCsum((char*)boot.mem_rx, boot.expectedRxBytes)){
           boot.mem_rx[0]^= ((uint8_t)bytesToWrite);
 
-          // *** do actual mem write here later ***
-#if configLOG_STM32_BOOTLOADER == 1
-          for(int i=0; i< bytesToWrite+1;i++){
-              Log("%02x ", boot.mem_rx[i]);
-          }
-                Log("\n");
-#endif
+          bytesToWrite++; // bytesToWrite send by Host is -1 (to be able to write up to 256 byte with just 1 byte size)
 
-          send_ACK();
+          LOG("WriteMem: Write %d bytes to address 0x%08x - ", bytesToWrite, startAddress);
+          if(boot.api.writeFlash(startAddress,boot.mem_rx,bytesToWrite)){
+              LOG("OK\n");
+              send_ACK();
+          }else{
+              LOG("ERROR\n");
+              send_NACK();
+          }
 
       }else{
           send_NACK();
-          Log("WriteMem: csum error\n");
+          LOG("WriteMem: csum error\n");
       }
   }
 
   // error or finish
-#if configLOG_STM32_BOOTLOADER == 1
-  Log("WriteMem: OK\n");
-#endif
+  LOG("WriteMem: END\n\n");
   stage = 0;
   return true;
  }
 
+ // *****
+ // ERASE
+ // *****
 static bool ExtendedErase(){
     static uint32_t stage = 0;
     static uint32_t numPagesToErase = 0;
@@ -152,9 +160,8 @@ static bool ExtendedErase(){
     static uint8_t partialCsum2 = 0;
     if(stage==0){
         send_ACK(); // ack extended erase memory command
-#if configLOG_STM32_BOOTLOADER == 1
-        Log("ExtendedErase: Start\n");
-#endif
+
+        LOG("ExtendedErase: Start\n");
         setBytesToReceive(2); // setup to receive number of pages to be erased
 
         numPagesToErase = 0;
@@ -166,16 +173,15 @@ static bool ExtendedErase(){
 
     // Receive Number of Pages to be erased N-1 (2 bytes) MSB first
     if(stage==1){
-        numPagesToErase  = ((uint32_t)boot.mem_rx[0]) << 8;
+        numPagesToErase  = ((uint32_t)boot.mem_rx[0]) << (uint32_t)8;
         numPagesToErase |= ((uint32_t)boot.mem_rx[1]);
         numPagesToErase++;
 
             // save csum relevant data of this stage
             partialCsum = boot.mem_rx[0];
             partialCsum ^= boot.mem_rx[1];
-#if configLOG_STM32_BOOTLOADER == 1
-            Log("ExtendedErase: Pages to be erased: %d\nExtendedErase: Page list rx bytes %d\n", numPagesToErase, (2 * numPagesToErase)+STM32_BOOT_CSUM_SIZE);
-#endif
+
+            LOG("ExtendedErase: Pages to be erased: %d\nExtendedErase: Page list rx bytes %d\n", numPagesToErase, (2 * numPagesToErase)+STM32_BOOT_CSUM_SIZE);
 
             setBytesToReceive((2 * numPagesToErase) + STM32_BOOT_CSUM_SIZE);
             stage++;
@@ -192,42 +198,44 @@ static bool ExtendedErase(){
             for(int i=0; i < numPagesToErase; i++){
                 page2Erase  = ((uint32_t)boot.mem_rx[i*2]) << 8;
                 page2Erase |= ((uint32_t)boot.mem_rx[i*2+1]);
-#if configLOG_STM32_BOOTLOADER == 1
-                Log("ExtendedErase: Page #%d erased\n", page2Erase);
-#endif
-                // *** do actual mem erase here later ***
-            }
+                LOG("ExtendedErase: Erasing page #%d - ", page2Erase);
 
+                // actual flash callback
+                if(!boot.api.deleteFlashPage(page2Erase)){
+                    LOG("ERROR\n");
+                }else{
+                    LOG("OK\n");
+                }
+            }
+            LOG("ExtendedErase: END\n\n");
+            stage = 0;
             send_ACK();
+            return true;
         }else{
-            boot.mem_rx[0]^= partialCsum; // remove partial csum again
-            for(int i=0; i<(2 * numPagesToErase) + STM32_BOOT_CSUM_SIZE;i++){
-                Log("%02x",boot.mem_rx[i]);
-            }
-            Log("\n");
-
+            LOG("ExtendedErase: END\n\n");
+            LOG("ExtendedErase: csum error\n");
             send_NACK();
-            Log("ExtendedErase: csum error\n");
+            stage = 0;
+            return true;
         }
     }
 
     // error or finish
-#if configLOG_STM32_BOOTLOADER == 1
-    Log("ExtendedErase: OK\n");
-#endif
-    stage = 0;
-    return true;
+     stage = 0;
+     return true;
 }
 
+// *****
+// READ
+// *****
 static bool ReadMemory(){
     static uint32_t stage = 0;
     static uint32_t startAddress = 0;
 
     if(stage==0){
         send_ACK(); // ack read memory command
-#if configLOG_STM32_BOOTLOADER == 1
-        Log("ReadMemory: Start\n");
-#endif
+
+        //LOG("ReadMemory: Start\n");
         setBytesToReceive(4 + STM32_BOOT_CSUM_SIZE); // setup to receive number of pages to be erased
 
         startAddress = 0;
@@ -238,13 +246,12 @@ static bool ReadMemory(){
     // Receive the start address (4 bytes) & checksum
     if(stage==1){
         if(checkXorCsum((char*)boot.mem_rx, boot.expectedRxBytes)){
-            startAddress |= ((uint32_t)boot.mem_rx[0]) << 24;
-            startAddress |= ((uint32_t)boot.mem_rx[1]) << 16;
-            startAddress |= ((uint32_t)boot.mem_rx[2]) << 8;
+            startAddress |= ((uint32_t)boot.mem_rx[0]) << (uint32_t)24;
+            startAddress |= ((uint32_t)boot.mem_rx[1]) << (uint32_t)16;
+            startAddress |= ((uint32_t)boot.mem_rx[2]) << (uint32_t)8;
             startAddress |= ((uint32_t)boot.mem_rx[3]);
-#if configLOG_STM32_BOOTLOADER == 1
-            Log("ReadMemory: start address = 0x%08x\n",startAddress);
-#endif
+
+            //LOG("ReadMemory: start address = 0x%08x\n",startAddress);
 
             send_ACK(); // ack start address // todo check if valid, callbacks?
             setBytesToReceive(1 + STM32_BOOT_CSUM_SIZE); // num of bytes to expect
@@ -253,75 +260,72 @@ static bool ReadMemory(){
         }
     }
 
-    // Receive the page numbers (16bit) to be erased
+    // Receive the bytes to be read by host and send by the bootloader (up to 256 bytes)
     if(stage==2){
         if(checkXorCsum((char*)boot.mem_rx, boot.expectedRxBytes)){
-            uint32_t bytesToSend = boot.mem_rx[0] + 1 ; // +1 not documentated by makes sense to read 256 bytes with 1 byte
-            send_ACK();
-#if configLOG_STM32_BOOTLOADER == 1
-            Log("ReadMemory: %d bytes\n", bytesToSend);
-#endif
-            char temp[256];
-            for(int i=0; i<bytesToSend;i++){
-                temp[i]=i;
+            uint32_t bytesToSend = boot.mem_rx[0] + 1 ; // +1 not documented by makes sense to read 256 bytes with 1 byte
 
+            LOG("ReadMemory: Read %d bytes from address 0x%08x - ", bytesToSend, startAddress);
+            send_ACK();
+            if(boot.api.readFlash(startAddress, (uint8_t*)boot.mem_tx, bytesToSend)){
+                boot.api.putA(boot.mem_tx, bytesToSend);
+                LOG("OK\n");
+            }else{
+                send_NACK();
+                LOG("ERROR\n");
             }
-            boot.api.putA(temp, bytesToSend);
+
 
         }else{
             send_NACK();
-            Log("ReadMemory: csum error\n");
-
+            LOG("ReadMemory: csum error\n");
         }
     }
 
     // error or finish
-#if configLOG_STM32_BOOTLOADER == 1
-    Log("ReadMemory: OK\n");
-#endif
+    LOG("ReadMemory: END\n\n");
+
     stage = 0;
     return true;
 }
 
 
-
 bool selectCommand(uint8_t cmd){
      switch(cmd){
          case (uint32_t) CmdGetId:
-#if configLOG_STM32_BOOTLOADER == 1
-             Log("STM32 Boot: select CmdGetId\n");
-#endif
+
+             LOG("STM32 Boot: select CmdGetId\n");
+
              boot.selectedCmd = cmd;
              boot.selectedCmdDoWorkLoop = GetId;
              return true;
 
          case (uint32_t) CmdWriteMemory:
-#if configLOG_STM32_BOOTLOADER == 1
-             Log("STM32 Boot: select CmdWriteMemory\n");
-#endif
+
+             LOG("STM32 Boot: select CmdWriteMemory\n");
+
              boot.selectedCmd = cmd;
              boot.selectedCmdDoWorkLoop = WriteMem;
              return true;
 
          case (uint32_t) CmdExtendedErase:
-#if configLOG_STM32_BOOTLOADER == 1
-             Log("STM32 Boot: select CmdExtendedErase\n");
-#endif
+
+             LOG("STM32 Boot: select CmdExtendedErase\n");
+
              boot.selectedCmd = cmd;
              boot.selectedCmdDoWorkLoop = ExtendedErase;
              return true;
 
          case (uint32_t) CmdReadMemory:
-#if configLOG_STM32_BOOTLOADER == 1
-             Log("STM32 Boot: select CmdReadMemory\n");
-#endif
+
+             LOG("STM32 Boot: select CmdReadMemory\n");
+
              boot.selectedCmd = cmd;
              boot.selectedCmdDoWorkLoop = ReadMemory;
              return true;
 
          default:
-             Log("STM32 Boot: command %02x not supported!\n",cmd);
-
+             LOG("STM32 Boot: command %02x not supported!\n",cmd);
              return false;
      }
  }

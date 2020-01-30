@@ -1,5 +1,4 @@
 #include <github.com/lobaro/c-utils/c_stdlibs.h>
-#include <github.com/lobaro/c-utils/logging.h>
 #include <github.com/lobaro/util-ringbuf/drv_ringbuf.h>
 #include <github.com/lobaro/c-utils/lobaroAssert.h>
 #include <github.com/lobaro/hal-stm32l151CB-A/hal.h>
@@ -7,6 +6,7 @@
 // constants
 #include "stm32_bootloader.h"
 #include "internals.h"
+#include "module_logging.h"
 
 ringBuffer_typedef(volatile char, rxRingBuf_t);
 static rxRingBuf_t rxRingBuf;
@@ -25,25 +25,40 @@ void drv_stm32boot_onByteRxed_IRQ_cb(char c){
 }
 
 static bool api_OK(){
+
+  if(boot.InactivityTimeoutSeks!=0){
     if(boot.api.SetAlarm == NULL) return false;
     if(boot.api.GetTime == NULL) return false;
     if(boot.api.EnableAlarm == NULL) return false;
     if(boot.api.DisableAlarm == NULL) return false;
+  }
+
     if(boot.api.putA == NULL) return false;
+
+#if LOG_STM32_BOOTLOADER == 1
+    if(boot.api.log == NULL) return false;
+#endif
+    if(boot.api.EnableIRQs == NULL) return false;
+    if(boot.api.DisableIRQs == NULL) return false;
+    if(boot.api.writeFlash == NULL) return false;
+    if(boot.api.readFlash == NULL) return false;
+    if(boot.api.deleteFlashPage == NULL) return false;
     return true;
 }
 
-bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks) {
+bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks, uint16_t chipID) {
     boot.api = api;
     boot.isTimeout = false;
+    boot.InactivityTimeoutSeks = InactivityTimeoutSeks;
+    boot.chipID = chipID;
 
     // can't start
-    if(!api_OK() || InactivityTimeoutSeks == 0){
+    if(!api_OK()){
         return false;
     }
-
-    Log("Starting serial stm32 bootloader\n");
-
+    LOG("\n\n*****************************************\n");
+    LOG("Starting serial stm32 bootloader (AN3155)\n");
+    LOG("*****************************************\n\n");
     boot.selectedCmd = CmdNone;
     boot.hostInitDone = false;
 
@@ -51,14 +66,16 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
     drv_rbuf_init(pRxRingBuf, STM32_BOOT_RINGBUF_SIZE, volatile char, rxMem);
     setBytesToReceive(1);
 
-    Time_t timeNow = boot.api.GetTime();
-    boot.api.SetAlarm(timeNow+InactivityTimeoutSeks);
-    boot.api.EnableAlarm();
+    if(InactivityTimeoutSeks != 0){
+        Time_t timeNow = boot.api.GetTime();
+        boot.api.SetAlarm(timeNow+InactivityTimeoutSeks);
+        boot.api.EnableAlarm();
+    }
 
     while (!boot.isTimeout){
 
         // check for at least expected byte to be available for processing
-        if(!(bytesInBuffer >= boot.expectedRxBytes)){
+        if(bytesInBuffer < boot.expectedRxBytes){
             continue;
         }
 
@@ -87,7 +104,7 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
         // wait for next command to execute / select
         if(boot.selectedCmd == CmdNone && boot.expectedRxBytes == 2) {
             if(checkXorCsum((char*)boot.mem_rx, boot.expectedRxBytes) == false){
-                Log("csum error while selecting next cmd\n");
+                LOG("csum error while selecting next cmd\n");
 
                 setBytesToReceive(1 + STM32_BOOT_CSUM_SIZE);
                 continue;
@@ -104,11 +121,10 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
         if(boot.selectedCmdDoWorkLoop() == true){ // command done, else command restarts receive if needed internally
             // setup receive logic for next command
             boot.selectedCmd = CmdNone;
-
             setBytesToReceive(1 + STM32_BOOT_CSUM_SIZE);
         }
 
     }
-    Log("Leaving serial stm32 bootloader\n");
+    LOG("Leaving serial stm32 bootloader\n");
 }
 

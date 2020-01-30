@@ -35,14 +35,17 @@ static const uint8_t CmdReadoutUnProtect = 0x92;
 #define STM32_BOOT_RX_MEM_SIZE 1280
 #define STM32_BOOT_TX_MEM_SIZE 1280
 #define STM32_BOOT_RINGBUF_SIZE 1280
+#define STM32_BOOT_READWRITE_BUF_SIZE 256 // read and write can only operate on 256 byte each command invocation
 #define STM32_BOOT_CSUM_SIZE 1
 
 
 typedef struct{
     drv_stm32boot_api_t api;
+    uint16_t chipID;
 
     bool hostInitDone;
-    bool isTimeout;
+    volatile bool isTimeout;
+    Duration_t InactivityTimeoutSeks;
 
     size_t expectedRxBytes;
     uint8_t selectedCmd;
@@ -50,6 +53,7 @@ typedef struct{
 
     char mem_rx[STM32_BOOT_RX_MEM_SIZE]; // working buf rx
     char mem_tx[STM32_BOOT_TX_MEM_SIZE]; // working buf tx
+    char pageMem[STM32_BOOT_READWRITE_BUF_SIZE];
 }boot32_t;
 
 extern boot32_t boot;
