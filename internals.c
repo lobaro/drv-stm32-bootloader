@@ -202,7 +202,11 @@ static bool ExtendedErase(){
 
                 // actual flash callback
                 if(!boot.api.deleteFlashPage(page2Erase)){
+                    stage = 0;
+                    send_NACK();
                     LOG("ERROR\n");
+                    LOG("ExtendedErase: END\n\n");
+                    return true;
                 }else{
                     LOG("OK\n");
                 }
@@ -212,8 +216,8 @@ static bool ExtendedErase(){
             send_ACK();
             return true;
         }else{
-            LOG("ExtendedErase: END\n\n");
             LOG("ExtendedErase: csum error\n");
+            LOG("ExtendedErase: END\n\n");
             send_NACK();
             stage = 0;
             return true;
