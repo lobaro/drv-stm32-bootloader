@@ -70,9 +70,10 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
         Time_t timeNow = boot.api.GetTime();
         boot.api.SetAlarm(timeNow+InactivityTimeoutSeks);
         boot.api.EnableAlarm();
+        LOG("Waiting %d seconds for bootloader init command...\n", (uint32_t)InactivityTimeoutSeks);
     }
 
-    while (!boot.isTimeout){
+    while (!boot.isTimeout || boot.hostInitDone){
 
         // check for at least expected byte to be available for processing
         if(bytesInBuffer < boot.expectedRxBytes){
