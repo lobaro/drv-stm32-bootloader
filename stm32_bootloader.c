@@ -80,6 +80,9 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
             continue;
         }
 
+        // will reset after 28sek of inactivity
+        hal_watchdog_pingAlive();
+
         // read expected bytes from ringbuf
         for(int i=0; i<boot.expectedRxBytes;i++){
             drv_rbuf_read(pRxRingBuf,&(boot.mem_rx[i]));
