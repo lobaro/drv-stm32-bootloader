@@ -12,7 +12,7 @@ boot32_t boot;
  void send_ACK(){
     char ack = BYTE_ACK;
     boot.api.putA(&ack,1);
-
+    boot.api.feedWatchdog();
 }
 
  void send_NACK(){

@@ -13,7 +13,7 @@ extern "C" {
 #include <stdint.h>
 #include <github.com/lobaro/util-ringbuf/drv_ringbuf.h>
 
-
+static const uint8_t BYTE_QUIT = 0xFE;
 static const uint8_t BYTE_INITIALIZE = 0x7F;
 static const uint8_t BYTE_ACK = 0x79;
 static const uint8_t BYTE_NACK = 0x1F;
@@ -31,6 +31,7 @@ static const uint8_t CmdWriteProtect     = 0x63;
 static const uint8_t CmdWriteUnProtect   = 0x73;
 static const uint8_t CmdReadoutProtect   = 0x82;
 static const uint8_t CmdReadoutUnProtect = 0x92;
+
 
 #define STM32_BOOT_RX_MEM_SIZE 1280
 #define STM32_BOOT_TX_MEM_SIZE 1280

@@ -14,6 +14,7 @@ typedef struct {
     void (*putA)(const char *s, size_t len);
     void (*EnableIRQs)();
     void (*DisableIRQs)();
+    void (*feedWatchdog)();
 
     // flash api
     bool (*deleteFlashPage)(uint16_t pageNumber);

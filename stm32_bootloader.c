@@ -34,6 +34,8 @@ static bool api_OK(){
   }
 
     if(boot.api.putA == NULL) return false;
+    if(boot.api.feedWatchdog == NULL) return false;
+
 
 #if LOG_STM32_BOOTLOADER == 1
     if(boot.api.log == NULL) return false;
@@ -80,7 +82,7 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
             continue;
         }
 
-        // will reset after 28sek of inactivity
+        // will reset after 15sek of inactivity
         hal_watchdog_pingAlive();
 
         // read expected bytes from ringbuf
@@ -99,6 +101,9 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
                 boot.hostInitDone = true;
                 setBytesToReceive(1 + STM32_BOOT_CSUM_SIZE);
                 send_ACK(); // signal host that we are ready to receive commands
+
+            } else if(boot.mem_rx[0] == BYTE_QUIT){
+                return false; // quit
             }else{
                 setBytesToReceive(1); // continue waiting for init byte from host
             }
@@ -111,13 +116,14 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
                 LOG("csum error while selecting next cmd\n");
 
                 setBytesToReceive(1 + STM32_BOOT_CSUM_SIZE);
-                continue;
+                //continue;
+                return false; // quit bootloader
             }
 
             if(selectCommand(boot.mem_rx[0]) == false){ // command not supported?
                 setBytesToReceive(1 + STM32_BOOT_CSUM_SIZE); // continue waiting for supported cmd
                 send_NACK();
-                continue;
+                return false; // quit bootloader
             }
         }
 
