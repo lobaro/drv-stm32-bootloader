@@ -1,7 +1,7 @@
 #include <github.com/lobaro/c-utils/c_stdlibs.h>
 #include <github.com/lobaro/util-ringbuf/drv_ringbuf.h>
 #include <github.com/lobaro/c-utils/lobaroAssert.h>
-#include <github.com/lobaro/hal-stm32l151CB-A/hal.h>
+
 
 // constants
 #include "stm32_bootloader.h"
@@ -81,9 +81,6 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
         if(bytesInBuffer < boot.expectedRxBytes){
             continue;
         }
-
-        // will reset after 15sek of inactivity
-        hal_watchdog_pingAlive();
 
         // read expected bytes from ringbuf
         for(int i=0; i<boot.expectedRxBytes;i++){
