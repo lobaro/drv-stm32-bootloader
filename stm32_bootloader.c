@@ -56,6 +56,9 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
 
     // can't start
     if(!api_OK()){
+        if(boot.api.DisableIRQs != NULL){
+            boot.api.DisableIRQs();
+        }
         return false;
     }
     LOG("\n\n*****************************************\n");
@@ -100,6 +103,7 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
                 send_ACK(); // signal host that we are ready to receive commands
 
             } else if(boot.mem_rx[0] == BYTE_QUIT){
+                boot.api.DisableIRQs();
                 return false; // quit
             }else{
                 setBytesToReceive(1); // continue waiting for init byte from host
@@ -114,12 +118,14 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
 
                 setBytesToReceive(1 + STM32_BOOT_CSUM_SIZE);
                 //continue;
+                boot.api.DisableIRQs();
                 return false; // quit bootloader
             }
 
             if(selectCommand(boot.mem_rx[0]) == false){ // command not supported?
                 setBytesToReceive(1 + STM32_BOOT_CSUM_SIZE); // continue waiting for supported cmd
                 send_NACK();
+                boot.api.DisableIRQs();
                 return false; // quit bootloader
             }
         }
@@ -133,5 +139,6 @@ bool drv_stm32boot_run(drv_stm32boot_api_t api, Duration_t InactivityTimeoutSeks
 
     }
     LOG("Leaving serial stm32 bootloader\n");
+    boot.api.DisableIRQs();
 }
 
